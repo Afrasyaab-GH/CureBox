@@ -111,7 +111,7 @@ class KeywordBlocker(val service: AccessibilityService) : BaseBlocker() {
         return words
     }
 
-    fun checkIfUserGettingFreaky(
+    fun detectBlockedKeywords(
         rootNode: AccessibilityNodeInfo?,
         event: AccessibilityEvent
     ): KeywordBlockerResult {

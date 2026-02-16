@@ -25,13 +25,13 @@ import java.util.concurrent.TimeUnit
 class UsageTrackingService : BaseBlockingService() {
 
     private var screenOnTime: Long = 0
-    private var accumulatedTime: Long = 0
+    private var accumulatedScreenTime: Long = 0
     private var isScreenOn = false
-    private val handler = Handler(Looper.getMainLooper())
-    private var updateRunnable: Runnable? = null
+    private val timeTrackingHandler = Handler(Looper.getMainLooper())
+    private var timeTrackingRunnable: Runnable? = null
 
     private val usageStatOverlayManager by lazy { UsageStatOverlayManager(this) }
-    private var userYSwipeEventCounter: Long = 0
+    private var scrollEventCounter: Long = 0
 
     private var attentionSpanDataList = mutableMapOf<String, MutableList<AttentionSpanVideoItem>>()
     private var lastVideoViewFoundTime: Long? = null
@@ -39,16 +39,15 @@ class UsageTrackingService : BaseBlockingService() {
 
     private var isReelCountToBeDisplayed = true
     private var isTimeElapsedCounterOn = true
-    private var supportsViewScrolled = false
 
     private var displayOverlayApps = hashSetOf("") //show overlay only on these apps
     private var lastScrollTime: Long = 0
     private var lastScrollY: Float = 0f
     private var isScrollInProgress = false
-    private val SCROLL_DEBOUNCE_TIME = 800L // Increased to 800ms
-    private val MIN_SCROLL_DISTANCE = 100f // Minimum distance to consider a new scroll
+    private val SCROLL_DEBOUNCE_TIME = 800L
+    private val MIN_SCROLL_DISTANCE = 100f
 
-    private var lastEventTimeStamp = 0L
+    private var lastContentChangeTimestamp = 0L
     companion object {
 
         const val INTENT_ACTION_REFRESH_USAGE_TRACKER = "nethical.digipaws.refresh.usage_tracker"
@@ -170,52 +169,50 @@ class UsageTrackingService : BaseBlockingService() {
         }else{
             usageStatOverlayManager.binding?.timeElapsedTxt?.visibility = View.VISIBLE
 
-            // Initialize if the screen is already on
             if ((getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive) {
                 handleScreenOn()
             }
         }
-
     }
 
     private fun handleScreenOn() {
         isScreenOn = true
         screenOnTime = System.currentTimeMillis()
         startTimeTracking()
-        Log.d(TAG, "Screen ON - Continuing from: ${formatElapsedTime(accumulatedTime)}")
+        Log.d(TAG, "Screen ON - Continuing from: ${formatElapsedTime(accumulatedScreenTime)}")
     }
 
     private fun handleScreenOff() {
         isScreenOn = false
         updateAccumulatedTime()
         stopTimeTracking()
-        Log.d(TAG, "Screen OFF - Current accumulated: ${formatElapsedTime(accumulatedTime)}")
+        Log.d(TAG, "Screen OFF - Current accumulated: ${formatElapsedTime(accumulatedScreenTime)}")
     }
 
     private fun startTimeTracking() {
-        stopTimeTracking() // Ensure only one tracker runs
-        updateRunnable = object : Runnable {
+        stopTimeTracking()
+        timeTrackingRunnable = object : Runnable {
             override fun run() {
                 if (isScreenOn) {
                     val currentTime = System.currentTimeMillis()
-                    val totalTime = accumulatedTime + (currentTime - screenOnTime)
+                    val totalTime = accumulatedScreenTime + (currentTime - screenOnTime)
                     usageStatOverlayManager.binding?.timeElapsedTxt?.text =
                         formatElapsedTime(totalTime)
-                    handler.postDelayed(this, UPDATE_INTERVAL)
+                    timeTrackingHandler.postDelayed(this, UPDATE_INTERVAL)
                 }
             }
         }
-        handler.post(updateRunnable!!)
+        timeTrackingHandler.post(timeTrackingRunnable!!)
     }
 
     private fun stopTimeTracking() {
-        updateRunnable?.let { handler.removeCallbacks(it) }
-        updateRunnable = null
+        timeTrackingRunnable?.let { timeTrackingHandler.removeCallbacks(it) }
+        timeTrackingRunnable = null
     }
 
     private fun updateAccumulatedTime() {
         if (isScreenOn) {
-            accumulatedTime += System.currentTimeMillis() - screenOnTime
+            accumulatedScreenTime += System.currentTimeMillis() - screenOnTime
             screenOnTime = System.currentTimeMillis()
         }
     }
@@ -229,121 +226,102 @@ class UsageTrackingService : BaseBlockingService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
 
-        if(displayOverlayApps.contains(
-                event?.packageName
-            ))
-        {
+        if(displayOverlayApps.contains(event?.packageName)) {
             if (Settings.canDrawOverlays(this)) {
                 usageStatOverlayManager.startDisplaying()
             }
-        }
-        else if(usageStatOverlayManager.isOverlayVisible) {
+        } else if(usageStatOverlayManager.isOverlayVisible) {
             usageStatOverlayManager.removeOverlay()
         }
 
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isDelayOver(
-                lastEventTimeStamp,
-                2000
+                lastContentChangeTimestamp, 2000
             )
         ) {
-
-
-            // apps supports reel tracking
-            if (SUPPORTED_TRACKING_APPS.contains(event.packageName)) {
-                Log.d("source", event.source?.className.toString())
-                // find reel tracking view and hide the counter if not found
-                ViewBlocker.BLOCKED_VIEW_ID_LIST.forEach { viewId ->
-                    if (ViewBlocker.findElementById(rootInActiveWindow, viewId) == null) {
-                        hideReelTrackingView()
-                    }
-                }
-            } else {
-                // app is not supported so hide it
-                hideReelTrackingView()
-            }
-
-            lastEventTimeStamp = SystemClock.uptimeMillis()
-
+            handleContentChanged(event)
+            lastContentChangeTimestamp = SystemClock.uptimeMillis()
         }
 
         if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            Log.d("scroll", "Scroll event - ${event.scrollY} - ${event.source?.className}")
-            supportsViewScrolled = true
-            
-            val currentTime = System.currentTimeMillis()
-            val scrollY = event.scrollY.toFloat()
-            
-            // Only process the event if:
-            // 1. There's no scroll in progress, or
-            // 2. Enough time has passed since the last scroll and the distance is significant
-            if (!isScrollInProgress || 
-                (currentTime - lastScrollTime > SCROLL_DEBOUNCE_TIME && 
-                Math.abs(scrollY - lastScrollY) > MIN_SCROLL_DISTANCE)) {
-                
-                when {
-                    // handle tiktok scrolls
-                    TIKTOK_PACKAGES.contains(event.packageName) && 
-                    event.source?.className == "androidx.viewpager.widget.ViewPager" -> {
-                        handleScrollEvent(event.packageName.toString())
-                    }
+            handleViewScrolled(event)
+        }
+    }
 
-                    // handle facebook scrolls
-                    event.packageName == "com.facebook.katana" && 
-                    event.source?.className == "androidx.recyclerview.widget.RecyclerView" -> {
-                        val nodes = rootInActiveWindow.findAccessibilityNodeInfosByText(
-                            "FbShortsComposerAttachmentComponentSpec_STICKER"
-                        )
-                        if (nodes.firstOrNull() != null) handleScrollEvent("com.facebook.katana")
-                    }
-
-                    // handle instagram scrolls
-                    event.source?.className == "androidx.viewpager.widget.ViewPager" && 
-                    event.packageName == "com.instagram.android" -> {
-                        val reelView = ViewBlocker.findElementById(
-                            rootInActiveWindow,
-                            "com.instagram.android:id/root_clips_layout"
-                        )
-                        if (reelView != null) handleScrollEvent("com.instagram.android") 
-                        else hideReelTrackingView()
-                    }
-
-                    // youtube scrolls
-                    event.packageName == "com.google.android.youtube" &&
-                    event.source?.className == "android.support.v7.widget.RecyclerView" -> {
-                        val reelView = ViewBlocker.findElementById(
-                            rootInActiveWindow,
-                            "com.google.android.youtube:id/reel_recycler"
-                        )
-                        val commentsSection = ViewBlocker.findElementById(
-                            rootInActiveWindow,
-                            "com.google.android.youtube:id/engagement_panel_content"
-                        )
-                        if (reelView != null && commentsSection == null) 
-                            handleScrollEvent("com.google.android.youtube") 
-                        else hideReelTrackingView()
-                    }
-
-                    // revanced scrolls
-                    event.packageName == "app.revanced.android.youtube" &&
-                    event.source?.className == "android.support.v7.widget.RecyclerView" -> {
-                        val reelView = ViewBlocker.findElementById(
-                            rootInActiveWindow,
-                            "app.revanced.android.youtube:id/reel_recycler"
-                        )
-                        val commentsSection = ViewBlocker.findElementById(
-                            rootInActiveWindow,
-                            "app.revanced.android.youtube:id/engagement_panel_content"
-                        )
-                        if (reelView != null && commentsSection == null) 
-                            handleScrollEvent("app.revanced.android.youtube") 
-                        else hideReelTrackingView()
-                    }
+    private fun handleContentChanged(event: AccessibilityEvent) {
+        if (SUPPORTED_TRACKING_APPS.contains(event.packageName)) {
+            Log.d("source", event.source?.className.toString())
+            ViewBlocker.BLOCKED_VIEW_ID_LIST.forEach { viewId ->
+                if (ViewBlocker.findElementById(rootInActiveWindow, viewId) == null) {
+                    hideReelTrackingView()
                 }
-                
-                lastScrollY = scrollY
-                lastScrollTime = currentTime
+            }
+        } else {
+            hideReelTrackingView()
+        }
+    }
+
+    private fun handleViewScrolled(event: AccessibilityEvent) {
+        Log.d("scroll", "Scroll event - ${event.scrollY} - ${event.source?.className}")
+
+        val currentTime = System.currentTimeMillis()
+        val scrollY = event.scrollY.toFloat()
+
+        if (isScrollInProgress &&
+            (currentTime - lastScrollTime <= SCROLL_DEBOUNCE_TIME ||
+            Math.abs(scrollY - lastScrollY) <= MIN_SCROLL_DISTANCE)) {
+            return
+        }
+
+        when {
+            TIKTOK_PACKAGES.contains(event.packageName) &&
+            event.source?.className == "androidx.viewpager.widget.ViewPager" -> {
+                handleScrollEvent(event.packageName.toString())
+            }
+
+            event.packageName == "com.facebook.katana" &&
+            event.source?.className == "androidx.recyclerview.widget.RecyclerView" -> {
+                val nodes = rootInActiveWindow.findAccessibilityNodeInfosByText(
+                    "FbShortsComposerAttachmentComponentSpec_STICKER"
+                )
+                if (nodes.firstOrNull() != null) handleScrollEvent("com.facebook.katana")
+            }
+
+            event.source?.className == "androidx.viewpager.widget.ViewPager" &&
+            event.packageName == "com.instagram.android" -> {
+                val reelView = ViewBlocker.findElementById(
+                    rootInActiveWindow,
+                    "com.instagram.android:id/root_clips_layout"
+                )
+                if (reelView != null) handleScrollEvent("com.instagram.android")
+                else hideReelTrackingView()
+            }
+
+            event.packageName == "com.google.android.youtube" &&
+            event.source?.className == "android.support.v7.widget.RecyclerView" -> {
+                handleYouTubeScroll("com.google.android.youtube")
+            }
+
+            event.packageName == "app.revanced.android.youtube" &&
+            event.source?.className == "android.support.v7.widget.RecyclerView" -> {
+                handleYouTubeScroll("app.revanced.android.youtube")
             }
         }
+
+        lastScrollY = scrollY
+        lastScrollTime = currentTime
+    }
+
+    private fun handleYouTubeScroll(packageName: String) {
+        val reelView = ViewBlocker.findElementById(
+            rootInActiveWindow,
+            "$packageName:id/reel_recycler"
+        )
+        val commentsSection = ViewBlocker.findElementById(
+            rootInActiveWindow,
+            "$packageName:id/engagement_panel_content"
+        )
+        if (reelView != null && commentsSection == null) handleScrollEvent(packageName)
+        else hideReelTrackingView()
     }
 
     private fun hideReelTrackingView() {
@@ -377,9 +355,9 @@ class UsageTrackingService : BaseBlockingService() {
     }
 
     private fun handleScrollEvent(packageName: String) {
-        if (++userYSwipeEventCounter > (MIN_SCROLL_THRESHOLD[packageName]!!)) {
+        if (++scrollEventCounter > (MIN_SCROLL_THRESHOLD[packageName]!!)) {
             isScrollInProgress = true
-            userYSwipeEventCounter = 0
+            scrollEventCounter = 0
             
             val date = TimeTools.getCurrentDate()
             val newCount = (reelCountData[date] ?: 0) + 1
@@ -399,10 +377,10 @@ class UsageTrackingService : BaseBlockingService() {
             trackAttentionSpan()
 
             savedPreferencesLoader.saveReelsScrolled(reelCountData)
-            lastBackPressTimeStamp = SystemClock.uptimeMillis()
+            lastGlobalActionTimestamp = SystemClock.uptimeMillis()
             
             // Schedule the reset of scroll state
-            handler.postDelayed({
+            timeTrackingHandler.postDelayed({
                 isScrollInProgress = false
             }, SCROLL_DEBOUNCE_TIME)
         }
@@ -415,6 +393,8 @@ class UsageTrackingService : BaseBlockingService() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(screenReceiver)
+        unregisterReceiver(refreshReceiver)
+        usageStatOverlayManager.removeOverlay()
         stopTimeTracking()
     }
 

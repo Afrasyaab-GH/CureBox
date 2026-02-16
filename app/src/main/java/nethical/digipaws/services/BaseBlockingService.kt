@@ -10,7 +10,7 @@ open class BaseBlockingService : AccessibilityService() {
         SavedPreferencesLoader(this)
     }
 
-    var lastBackPressTimeStamp: Long =
+    var lastGlobalActionTimestamp: Long =
         SystemClock.uptimeMillis() // prevents repetitive global actions
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -19,19 +19,18 @@ open class BaseBlockingService : AccessibilityService() {
     override fun onInterrupt() {
     }
 
-
     fun isDelayOver(lastTimestamp: Long, delay: Int): Boolean {
         val currentTime = SystemClock.uptimeMillis().toFloat()
         return currentTime - lastTimestamp > delay
     }
 
     fun pressHome() {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            lastBackPressTimeStamp = SystemClock.uptimeMillis()
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        lastGlobalActionTimestamp = SystemClock.uptimeMillis()
     }
 
     fun pressBack() {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            lastBackPressTimeStamp = SystemClock.uptimeMillis()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        lastGlobalActionTimestamp = SystemClock.uptimeMillis()
     }
 }

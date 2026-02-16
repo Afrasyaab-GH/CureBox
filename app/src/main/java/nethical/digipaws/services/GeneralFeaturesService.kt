@@ -21,7 +21,7 @@ class GeneralFeaturesService : BaseBlockingService() {
     }
 
 
-    private var lastPackageName: String? = null // Store the last active app's package name
+    private var lastForegroundPackage: String? = null
 
     private var selectedGrayScaleApps: HashSet<String> = hashSetOf()
     private var grayScaleMode = Constants.GRAYSCALE_MODE_ONLY_SELECTED
@@ -30,6 +30,7 @@ class GeneralFeaturesService : BaseBlockingService() {
     private val grayscaleControl = GrayscaleControl()
 
     private var ignoredGrayScalePackages: List<String> = listOf()
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         super.onAccessibilityEvent(event)
 
@@ -42,34 +43,27 @@ class GeneralFeaturesService : BaseBlockingService() {
         try {
             if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 val currentPackageName = event.packageName?.toString()
-                // Check if the app has changed
-                if (currentPackageName != null && currentPackageName != lastPackageName &&  !ignoredGrayScalePackages.contains(currentPackageName)) {
-                    lastPackageName = currentPackageName // Update the last package name
-
-                    when (grayScaleMode) {
-                        Constants.GRAYSCALE_MODE_ONLY_SELECTED -> {
-                            if (selectedGrayScaleApps.contains(event.packageName)) {
-                                grayscaleControl.enableGrayscale()
-                            } else {
-                                grayscaleControl.disableGrayscale()
-                            }
-                        }
-
-                        Constants.GRAYSCALE_MODE_ALL_EXCEPT_SELECTED -> {
-                            if (selectedGrayScaleApps.contains(event.packageName)) {
-                                grayscaleControl.disableGrayscale()
-                            } else {
-                                grayscaleControl.enableGrayscale()
-
-                            }
-                        }
-                    }
+                if (currentPackageName != null && currentPackageName != lastForegroundPackage && !ignoredGrayScalePackages.contains(currentPackageName)) {
+                    lastForegroundPackage = currentPackageName
+                    applyGrayscaleForPackage(currentPackageName)
                 }
             }
         } catch (_: Exception) {
         }
+    }
 
-
+    private fun applyGrayscaleForPackage(packageName: String) {
+        val isAppSelected = selectedGrayScaleApps.contains(packageName)
+        when (grayScaleMode) {
+            Constants.GRAYSCALE_MODE_ONLY_SELECTED -> {
+                if (isAppSelected) grayscaleControl.enableGrayscale()
+                else grayscaleControl.disableGrayscale()
+            }
+            Constants.GRAYSCALE_MODE_ALL_EXCEPT_SELECTED -> {
+                if (isAppSelected) grayscaleControl.disableGrayscale()
+                else grayscaleControl.enableGrayscale()
+            }
+        }
     }
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
@@ -136,5 +130,10 @@ class GeneralFeaturesService : BaseBlockingService() {
             val childNode = node.getChild(i)
             traverseNodesForKeywords(childNode)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(refreshReceiver)
     }
 }

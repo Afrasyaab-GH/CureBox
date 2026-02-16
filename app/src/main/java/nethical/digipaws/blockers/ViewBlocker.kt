@@ -40,7 +40,7 @@ class ViewBlocker : BaseBlocker() {
     var isFirstReelInFeedAllowed = false
 
     var cheatMinuteStartTime: Int? = null
-    var cheatMinutesEndTIme: Int? = null
+    var cheatMinutesEndTime: Int? = null
 
     fun doesViewNeedToBeBlocked(
         node: AccessibilityNodeInfo,
@@ -116,16 +116,16 @@ class ViewBlocker : BaseBlocker() {
         val currentMinutes = TimeTools.convertToMinutesFromMidnight(currentHour, currentMinute)
 
         // If cheat hours are not set, treat as inactive
-        if (cheatMinuteStartTime == null || cheatMinutesEndTIme == null || cheatMinuteStartTime == -1 || cheatMinutesEndTIme == -1) {
+        if (cheatMinuteStartTime == null || cheatMinutesEndTime == null || cheatMinuteStartTime == -1 || cheatMinutesEndTime == -1) {
             return false
         }
 
-        return if (cheatMinuteStartTime!! <= cheatMinutesEndTIme!!) {
+        return if (cheatMinuteStartTime!! <= cheatMinutesEndTime!!) {
             // Regular case: start time is before or equal to end time
-            currentMinutes in cheatMinuteStartTime!!..cheatMinutesEndTIme!!
+            currentMinutes in cheatMinuteStartTime!!..cheatMinutesEndTime!!
         } else {
             // Wraparound case: time range spans midnight
-            currentMinutes in cheatMinuteStartTime!!..1439 || currentMinutes in 0..cheatMinutesEndTIme!!
+            currentMinutes in cheatMinuteStartTime!!..1439 || currentMinutes in 0..cheatMinutesEndTime!!
         }
     }
     data class ViewBlockerResult(

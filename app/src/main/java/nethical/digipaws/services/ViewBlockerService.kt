@@ -28,10 +28,10 @@ class ViewBlockerService : BaseBlockingService() {
 
     private val viewBlocker = ViewBlocker()
     private var warningScreenConfig = MainActivity.WarningData()
-    private var lastEventTimeStamp = 0L
+    private var lastContentChangeTimestamp = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!isDelayOver(lastEventTimeStamp, 2000)) {
+        if (!isDelayOver(lastContentChangeTimestamp, 2000)) {
             return
         }
         val rootNode: AccessibilityNodeInfo? = rootInActiveWindow
@@ -42,7 +42,7 @@ class ViewBlockerService : BaseBlockingService() {
                 event?.packageName.toString()
             )
         })
-        lastEventTimeStamp = SystemClock.uptimeMillis()
+        lastContentChangeTimestamp = SystemClock.uptimeMillis()
     }
 
     override fun onInterrupt() {
@@ -87,7 +87,7 @@ class ViewBlockerService : BaseBlockingService() {
         val viewBlockerCheatHours = getSharedPreferences("cheat_hours", Context.MODE_PRIVATE)
         viewBlocker.cheatMinuteStartTime =
             viewBlockerCheatHours.getInt("view_blocker_start_time", -1)
-        viewBlocker.cheatMinutesEndTIme = viewBlockerCheatHours.getInt("view_blocker_end_time", -1)
+        viewBlocker.cheatMinutesEndTime = viewBlockerCheatHours.getInt("view_blocker_end_time", -1)
 
         val addReelData = getSharedPreferences("config_reels", Context.MODE_PRIVATE)
         viewBlocker.isIGInboxReelAllowed = addReelData.getBoolean("is_reel_inbox", false)
@@ -108,7 +108,7 @@ class ViewBlockerService : BaseBlockingService() {
 
         }
         serviceInfo = info
-        var displayMetrics: DisplayMetrics = resources.displayMetrics
+        val displayMetrics: DisplayMetrics = resources.displayMetrics
 
         viewBlocker.screenHeight = displayMetrics.heightPixels
         viewBlocker.screenWidth = displayMetrics.widthPixels

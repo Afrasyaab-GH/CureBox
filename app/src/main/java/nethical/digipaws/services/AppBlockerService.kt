@@ -51,16 +51,13 @@ class AppBlockerService : BaseBlockingService() {
 
     private val focusModeBlocker = FocusModeBlocker()
 
-    // responsible to trigger a recheck for what app user is currently using even when no event is received. Used in putting the usage recheck logic into
-    // cooldown for an app and later when the cooldown duration is over, trigger a recheck
-    private val handler = Handler(Looper.getMainLooper())
-
-
-    private var updateRunnable: Runnable? = null
+    // Triggers a recheck after cooldown/cheat-hours expire, even when no new accessibility event fires
+    private val recheckHandler = Handler(Looper.getMainLooper())
+    private var recheckRunnable: Runnable? = null
 
     private lateinit var notificationManager: NotificationTimerManager
 
-    private var lastPackage = ""
+    private var lastForegroundPackage = ""
 
     override fun onCreate() {
         appBlocker = AppBlocker(this)
@@ -68,9 +65,9 @@ class AppBlockerService : BaseBlockingService() {
     }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName.toString()
-        if (lastPackage == packageName || packageName == getPackageName()) return
+        if (lastForegroundPackage == packageName || packageName == getPackageName()) return
 
-        lastPackage = packageName
+        lastForegroundPackage = packageName
         Log.d("AppBlockerService", "Switched to app $packageName")
 
         val focusModeResult = focusModeBlocker.doesAppNeedToBeBlocked(packageName)
@@ -104,12 +101,12 @@ class AppBlockerService : BaseBlockingService() {
         notificationManager.stopTimer()
         if (appBlockerWarning.isWarningDialogHidden) {
             pressHome()
-            lastPackage = ""
+            lastForegroundPackage = ""
             return
         }
 
         pressHome()
-        lastPackage = ""
+        lastForegroundPackage = ""
 
         Thread.sleep(300)
         val dialogIntent = Intent(this, WarningActivity::class.java)
@@ -128,7 +125,7 @@ class AppBlockerService : BaseBlockingService() {
         if (!result.isBlocked) return
 
         pressHome()
-        lastPackage = ""
+        lastForegroundPackage = ""
         Toast.makeText(this, "This app is currently under focus mode", Toast.LENGTH_LONG).show()
     }
 
@@ -179,36 +176,32 @@ class AppBlockerService : BaseBlockingService() {
     }
 
     /**
-     * Setup a runnable that executes after n millis to check if a package is still being used that was allowed to be used previously
-     * as it was put into cooldown or found in cheat-minutes. Basically shows the warning dialog after cooldown is over.
-     * @param coolPackage
-     * @param endMillis
+     * Setup a runnable that fires at [endMillis] to re-evaluate whether the
+     * currently-foreground app should be blocked (e.g. after a cooldown or cheat-hours window expires).
      */
-    private fun setUpForcedRefreshChecker(coolPackage: String, endMillis: Long) {
-        if (updateRunnable != null) {
-            updateRunnable?.let { handler.removeCallbacks(it) }
-            updateRunnable = null
-        }
-        Log.d("setting up recheck",coolPackage)
-        updateRunnable = Runnable {
+    private fun setUpForcedRefreshChecker(cooldownPackage: String, endMillis: Long) {
+        recheckRunnable?.let { recheckHandler.removeCallbacks(it) }
+        recheckRunnable = null
 
-            Log.d("AppBlockerService", "Triggered Recheck for  $coolPackage")
+        Log.d("AppBlockerService", "Scheduling recheck for $cooldownPackage")
+        recheckRunnable = Runnable {
+            Log.d("AppBlockerService", "Triggered recheck for $cooldownPackage")
             try {
-                if (rootInActiveWindow.packageName == coolPackage) {
+                if (rootInActiveWindow.packageName == cooldownPackage) {
                     handleAppBlockerResult(
                         AppBlocker.AppBlockerResult(true),
-                        coolPackage
+                        cooldownPackage
                     )
-                    lastPackage = ""
-                    appBlocker.removeCooldownFrom(coolPackage)
+                    lastForegroundPackage = ""
+                    appBlocker.removeCooldownFrom(cooldownPackage)
                 }
             } catch (e: Exception) {
                 Log.e("AppBlockerService", e.toString())
-                setUpForcedRefreshChecker(coolPackage, endMillis + 60_000) // recheck after a minute
+                setUpForcedRefreshChecker(cooldownPackage, endMillis + 60_000)
             }
         }
 
-        handler.postAtTime(updateRunnable!!, endMillis)
+        recheckHandler.postAtTime(recheckRunnable!!, endMillis)
     }
     private fun setupAppBlocker() {
         appBlocker.blockedAppsList = savedPreferencesLoader.loadBlockedApps()
@@ -238,6 +231,8 @@ class AppBlockerService : BaseBlockingService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        recheckRunnable?.let { recheckHandler.removeCallbacks(it) }
+        recheckRunnable = null
         unregisterReceiver(refreshReceiver)
     }
 

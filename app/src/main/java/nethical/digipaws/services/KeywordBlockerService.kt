@@ -17,8 +17,8 @@ import nethical.digipaws.data.blockers.KeywordPacks
 
 class KeywordBlockerService : BaseBlockingService() {
 
-    private var refreshCooldown = 1000
-    private var lastEventTimeStamp = 0L
+    private var eventThrottleDelayMs = 1000
+    private var lastContentChangeTimestamp = 0L
     companion object {
         const val INTENT_ACTION_REFRESH_BLOCKED_KEYWORD_LIST =
             "nethical.digipaws.refresh.keywordblocker.blockedwords"
@@ -29,24 +29,24 @@ class KeywordBlockerService : BaseBlockingService() {
 
     private val keywordBlocker = KeywordBlocker(this)
     private val browserBlocker = BrowserBlocker(this)
-    private var KbIgnoredApps: HashSet<String> = hashSetOf()
+    private var keywordBlockerIgnoredApps: HashSet<String> = hashSetOf()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
 
         if (!isDelayOver(
-                lastEventTimeStamp,
-                refreshCooldown
-            ) || event == null || event.packageName == "nethical.digipaws" || KbIgnoredApps.contains(
+                lastContentChangeTimestamp,
+                eventThrottleDelayMs
+            ) || event == null || event.packageName == "nethical.digipaws" || keywordBlockerIgnoredApps.contains(
                 event.packageName
             )
         ) {
             return
         }
-        val rootnode: AccessibilityNodeInfo? = rootInActiveWindow
+        val rootNode: AccessibilityNodeInfo? = rootInActiveWindow
         Log.d("KeywordBlocker", "Searching Keywords")
-        handleKeywordBlockerResult(keywordBlocker.checkIfUserGettingFreaky(rootnode, event))
+        handleKeywordBlockerResult(keywordBlocker.detectBlockedKeywords(rootNode, event))
         handleBrowserBlockerResult(browserBlocker.isAppBrowser(event))
-        lastEventTimeStamp = SystemClock.uptimeMillis()
+        lastContentChangeTimestamp = SystemClock.uptimeMillis()
 
     }
 
@@ -123,10 +123,10 @@ class KeywordBlockerService : BaseBlockingService() {
                 .toString()
 
         if (keywordBlocker.isSearchAllTextFields) {
-            refreshCooldown = 5000
+            eventThrottleDelayMs = 5000
         }
 
-        KbIgnoredApps = savedPreferencesLoader.getKeywordBlockerIgnoredApps().toHashSet()
+        keywordBlockerIgnoredApps = savedPreferencesLoader.getKeywordBlockerIgnoredApps().toHashSet()
 
     }
 
