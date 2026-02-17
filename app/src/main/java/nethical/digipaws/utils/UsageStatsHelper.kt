@@ -4,10 +4,8 @@ import android.app.ActivityManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.util.Log
-import nethical.digipaws.ui.fragments.usage.AllAppsUsageFragment
+import nethical.digipaws.data.models.AppUsageStat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -16,26 +14,33 @@ import java.time.ZonedDateTime
 class UsageStatsHelper(private val context: Context) {
 
     private val usageStatsManager =
-        context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
 
     private val guardian = UnmatchedCloseEventGuardian()
-    fun getForegroundStatsByTimestamps(start: Long, end: Long): List<AllAppsUsageFragment.Stat> {
+    fun getForegroundStatsByTimestamps(start: Long, end: Long): List<AppUsageStat> {
+        if (usageStatsManager == null) {
+            Log.w("UsageStatsHelper", "UsageStatsManager unavailable – returning empty list")
+            return emptyList()
+        }
+
         // List to store currently running foreground processes
         val foregroundProcesses = mutableListOf<String>()
         if (end >= System.currentTimeMillis() - 1500) {
             // Get currently running foreground processes
             val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val appProcesses = activityManager.runningAppProcesses
-            for (appProcess in appProcesses) {
-                if (appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
-                    appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) {
-                    foregroundProcesses.add(appProcess.processName)
+            if (appProcesses != null) {
+                for (appProcess in appProcesses) {
+                    if (appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+                        appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) {
+                        foregroundProcesses.add(appProcess.processName)
+                    }
                 }
             }
         }
 
         // Query usage events from the UsageStatsManager
-        val events = usageStatsManager.queryEvents(start, end)
+        val events = usageStatsManager.queryEvents(start, end) ?: return emptyList()
         // Map to track when apps move to the foreground (nullable Long to handle null values)
         val moveToForegroundMap = mutableMapOf<AppClass, Long?>()
         // List to store foreground stats for each app
@@ -133,21 +138,21 @@ class UsageStatsHelper(private val context: Context) {
         // Aggregate the foreground stats into usage stats
         return aggregateForegroundStats(componentForegroundStats)
     }
-    fun getForegroundStatsByRelativeDay(offset: Int): List<AllAppsUsageFragment.Stat> {
+    fun getForegroundStatsByRelativeDay(offset: Int): List<AppUsageStat> {
         val queryDay = LocalDate.now().minusDays(offset.toLong())
         val start = queryDay.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val end = queryDay.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         return getForegroundStatsByTimestamps(start, end)
     }
 
-    fun getForegroundStatsByDay(queryDate: LocalDate): List<AllAppsUsageFragment.Stat> {
+    fun getForegroundStatsByDay(queryDate: LocalDate): List<AppUsageStat> {
         val start = queryDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val end = queryDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         return getForegroundStatsByTimestamps(start, end)
     }
 
-    private fun aggregateForegroundStats(foregroundStats: List<ComponentForegroundStat>): List<AllAppsUsageFragment.Stat> {
-        val usageStats = mutableListOf<AllAppsUsageFragment.Stat>()
+    private fun aggregateForegroundStats(foregroundStats: List<ComponentForegroundStat>): List<AppUsageStat> {
+        val usageStats = mutableListOf<AppUsageStat>()
         if (foregroundStats.isEmpty()) return usageStats
 
         // Map to store total foreground time for each app
@@ -172,7 +177,7 @@ class UsageStatsHelper(private val context: Context) {
         // Create Stat objects with total time and start times
         for ((packageName, totalTime) in applicationTotalForegroundTime) {
             val startTimes = applicationStartTimes[packageName] ?: listOf()
-            usageStats.add(AllAppsUsageFragment.Stat(packageName, totalTime, startTimes))
+            usageStats.add(AppUsageStat(packageName, totalTime, startTimes))
         }
 
         // Sort by total time in descending order

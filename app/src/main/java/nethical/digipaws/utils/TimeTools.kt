@@ -84,3 +84,9 @@ class TimeTools {
 
     }
 }
+
+fun Long.toFormattedTime(showSeconds: Boolean = true): String =
+    TimeTools.formatTime(this, showSeconds)
+
+fun Long.toFormattedTimeCompact(): String =
+    TimeTools.formatTimeForWidget(this)

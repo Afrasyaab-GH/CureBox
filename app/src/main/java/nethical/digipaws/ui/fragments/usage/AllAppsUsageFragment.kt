@@ -48,6 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import nethical.digipaws.R
+import nethical.digipaws.data.models.AppUsageStat
 import nethical.digipaws.databinding.AppUsageItemBinding
 import nethical.digipaws.databinding.DialogPermissionInfoBinding
 import nethical.digipaws.databinding.FragmentAllAppUsageBinding
@@ -352,7 +353,7 @@ class AllAppsUsageFragment : Fragment() {
         }
     }
 
-    private fun calculateTotalScreenTimeInHours(stats: List<Stat>): Long {
+    private fun calculateTotalScreenTimeInHours(stats: List<AppUsageStat>): Long {
         val totalTimeInMillis = stats.sumOf { it.totalTime }
 
         return totalTimeInMillis
@@ -385,7 +386,7 @@ class AllAppsUsageFragment : Fragment() {
         datePicker.show()
     }
 
-    private fun updatePieChart(statsList: List<Stat>) {
+    private fun updatePieChart(statsList: List<AppUsageStat>) {
         val sortedStats = statsList.sortedByDescending { it.totalTime }
         val topApps = sortedStats.take(3)
 
@@ -594,7 +595,7 @@ class AllAppsUsageFragment : Fragment() {
     inner class AppUsageViewHolder(private val binding: AppUsageItemBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(stats: Stat, packageManager: PackageManager) {
+        fun bind(stats: AppUsageStat, packageManager: PackageManager) {
             val appInfo = packageManager.getApplicationInfo(stats.packageName, 0)
             binding.root.setOnClickListener{
                 activity?.supportFragmentManager?.beginTransaction()
@@ -638,7 +639,7 @@ class AllAppsUsageFragment : Fragment() {
     }
 
     inner class AppUsageAdapter(
-        private var appUsageStats: List<Stat>
+        private var appUsageStats: List<AppUsageStat>
     ) : RecyclerView.Adapter<AppUsageViewHolder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AppUsageViewHolder {
@@ -651,7 +652,7 @@ class AllAppsUsageFragment : Fragment() {
         }
 
         @SuppressLint("NotifyDataSetChanged")
-        fun updateData(newAppUsageStats: List<Stat>) {
+        fun updateData(newAppUsageStats: List<AppUsageStat>) {
             appUsageStats = newAppUsageStats
 
             notifyDataSetChanged()
@@ -685,6 +686,7 @@ class AllAppsUsageFragment : Fragment() {
         context.startActivity(intent)
     }
 
+    @Deprecated("Use AppUsageStat from data.models instead", ReplaceWith("AppUsageStat", "nethical.digipaws.data.models.AppUsageStat"))
     class Stat(
         val packageName: String,
         val totalTime: Long,

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.util.Log
 import android.widget.RemoteViews
 import nethical.digipaws.R
+import nethical.digipaws.data.models.AppUsageStat
 import nethical.digipaws.ui.activity.FragmentActivity
 import nethical.digipaws.ui.fragments.usage.AllAppsUsageFragment
 import nethical.digipaws.utils.SavedPreferencesLoader
@@ -127,7 +128,7 @@ class ScreentimeWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    fun setAppUsageText(remoteViews: RemoteViews,index: Int, list: List<AllAppsUsageFragment.Stat>, textViewId: Int, context: Context) {
+    fun setAppUsageText(remoteViews: RemoteViews,index: Int, list: List<AppUsageStat>, textViewId: Int, context: Context) {
         val item = list.getOrNull(index) // Safely get the item
         if (item != null) {
             val usage =  (TimeTools.formatTimeForWidget(item.totalTime))

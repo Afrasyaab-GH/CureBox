@@ -15,10 +15,11 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.google.android.material.color.MaterialColors
 import nethical.digipaws.R
+import nethical.digipaws.data.models.AppUsageStat
 import nethical.digipaws.databinding.FragmentAppUsageBreakdownBinding
 import nethical.digipaws.utils.TimeTools
 
-class AppUsageBreakdown(private val stat: AllAppsUsageFragment.Stat) : Fragment() {
+class AppUsageBreakdown(private val stat: AppUsageStat) : Fragment() {
 
 
     private lateinit var binding: FragmentAppUsageBreakdownBinding
